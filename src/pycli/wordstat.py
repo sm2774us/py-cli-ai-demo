@@ -1,22 +1,16 @@
 """wordstat: a word-frequency CLI tool.
 
-This module is INTENTIONALLY sub-optimal. It exists as a teaching example:
-an AI coding agent (Claude Code, Copilot, Gemini CLI, etc.) is meant to
-read this, find the algorithmic and style issues, and produce an improved
-version with benchmarks proving the improvement.
-
-Known issues (do not fix here; this is the "before" state):
-  - `top_n_words` is O(n^2) via repeated linear scans for the max.
-  - `tokenize` rebuilds a new string one character at a time.
-  - `count_words` uses a list of [word, count] pairs with linear search
-    instead of a dict/Counter, making it O(n^2) overall.
-  - No type-narrowing on CLI args validation beyond argparse defaults.
+This module provides functions to tokenize, count, and find top words
+in text.
 """
 
 from __future__ import annotations
 
 import argparse
+import heapq
+import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 
@@ -29,22 +23,11 @@ def tokenize(text: str) -> list[str]:
     Returns:
         A list of lowercase word tokens.
     """
-    words: list[str] = []
-    current = ""
-    for ch in text:
-        if ch.isalpha():
-            current = current + ch.lower()  # sub-optimal: string concat in loop
-        else:
-            if current:
-                words.append(current)
-                current = ""
-    if current:
-        words.append(current)
-    return words
+    return re.findall(r"[a-z]+", text.lower())
 
 
 def count_words(words: list[str]) -> list[list]:
-    """Counts word frequencies using a linear-search list (sub-optimal).
+    """Counts word frequencies using collections.Counter.
 
     Args:
         words: Tokenized words.
@@ -52,17 +35,8 @@ def count_words(words: list[str]) -> list[list]:
     Returns:
         A list of [word, count] pairs, order of first appearance.
     """
-    counts: list[list] = []
-    for word in words:
-        found = False
-        for pair in counts:  # O(n) scan per word -> O(n^2) total
-            if pair[0] == word:
-                pair[1] += 1
-                found = True
-                break
-        if not found:
-            counts.append([word, 1])
-    return counts
+    counts = Counter(words)
+    return [[word, count] for word, count in counts.items()]
 
 
 def top_n_words(counts: list[list], n: int) -> list[list]:
@@ -75,15 +49,9 @@ def top_n_words(counts: list[list], n: int) -> list[list]:
     Returns:
         Up to n [word, count] pairs sorted by count descending.
     """
-    remaining = [pair[:] for pair in counts]
-    result: list[list] = []
-    for _ in range(min(n, len(remaining))):
-        best_idx = 0
-        for i in range(1, len(remaining)):  # O(n) max-scan per iteration
-            if remaining[i][1] > remaining[best_idx][1]:
-                best_idx = i
-        result.append(remaining.pop(best_idx))
-    return result
+    items = [tuple(pair) for pair in counts]
+    top_items = heapq.nlargest(n, items, key=lambda kv: kv[1])
+    return [[word, count] for word, count in top_items]
 
 
 def analyze(text: str, top_n: int) -> list[list]:
